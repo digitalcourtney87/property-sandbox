@@ -1,0 +1,6 @@
+# Dependency-light baseline: standard-library pipeline.
+# Optional for richer analysis/visualization in extended environments:
+# pandas
+# pyarrow
+# matplotlib
+# rapidfuzz
