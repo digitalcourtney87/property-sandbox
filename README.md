@@ -65,3 +65,29 @@ python src/run_pipeline.py
 ## Reproducibility and traceability
 - Raw files are logged with URL, timestamp, status, path, size, and content type in `outputs/download_log.csv`.
 - Each module can run independently and writes deterministic outputs given the same inputs.
+
+
+## Environment note
+This version includes a dependency-light fallback that writes JSONL-formatted placeholder content under `.parquet` filenames when dataframe libraries are unavailable. Install pandas/pyarrow later if strict parquet binaries are required.
+
+
+## Raw data locations and ingestion behaviour
+Core raw folders used by the pipeline:
+- `data/raw/price_paid/` (CSV/ZIP from HM Land Registry Price Paid links)
+- `data/raw/ukhpi/` (CSV/ZIP UK HPI downloads)
+- `data/raw/epc/` (CSV/ZIP EPC extracts, when available)
+- `data/raw/ownership/` (manual ownership CSV/ZIP exports if available)
+- `data/raw/land_property_api/` (API root discovery JSON written by downloader)
+
+`python src/download_data.py` attempts automatic downloads for Price Paid, UKHPI, EPC link targets, and API discovery.
+If a source is blocked/gated, place files manually in the folder above and rerun preparation.
+
+## Exact local rerun command after data is available
+```bash
+python src/run_pipeline.py
+```
+
+If you only want to refresh downloads first:
+```bash
+python src/download_data.py && python src/run_pipeline.py
+```

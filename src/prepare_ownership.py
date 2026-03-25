@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from config import DATA_INTERIM, DATA_RAW, PipelineConfig
+from io_utils import clean_text, read_csv_and_zip_files, write_parquet_placeholder
 from io_utils import clean_text, read_csv_files, write_parquet_placeholder
 
 
@@ -18,6 +19,14 @@ def classify_owner_name(name: str) -> tuple[str, str]:
 
 
 def prepare_ownership(cfg: PipelineConfig) -> list[dict]:
+    folder = DATA_RAW / "ownership"
+    files = sorted([*folder.glob("*.csv"), *folder.glob("*.zip")])
+    if not files:
+        # optional for now; API root metadata may exist under land_property_api
+        write_parquet_placeholder(DATA_INTERIM / "ownership_clean.parquet", [])
+        return []
+
+    rows = read_csv_and_zip_files(files)
     files = sorted((DATA_RAW / "land_property_api").glob("*.csv"))
     rows = read_csv_files(files) if files else []
 

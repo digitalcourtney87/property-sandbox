@@ -10,6 +10,11 @@ def build_candidate_populations(cfg: PipelineConfig) -> tuple[list[dict], list[d
     ppd = read_parquet_placeholder(DATA_INTERIM / "price_paid_clean.parquet")
     ukhpi = read_parquet_placeholder(DATA_INTERIM / "ukhpi_uplift.parquet")
 
+    if cfg.strict_core_inputs and not ppd:
+        raise RuntimeError("price_paid_clean.parquet has no rows. Core candidate population cannot be built.")
+    if cfg.strict_core_inputs and not ukhpi:
+        raise RuntimeError("ukhpi_uplift.parquet has no rows. Core current-value uplift cannot be built.")
+
     max_uplift = max([float(r.get("uplift_factor", 1.15)) for r in ukhpi], default=1.15)
 
     v1, v2, proximity = [], [], []
@@ -30,6 +35,9 @@ def build_candidate_populations(cfg: PipelineConfig) -> tuple[list[dict], list[d
             rr2["estimated_current_value"] = est
             v2.append(rr2)
 
+    if cfg.strict_core_inputs and not v1 and not v2:
+        raise RuntimeError("Candidate populations are empty after applying £2m threshold. Check source coverage/date range.")
+
     write_parquet_placeholder(DATA_INTERIM / "candidate_population_v1.parquet", v1)
     write_parquet_placeholder(DATA_INTERIM / "candidate_population_v2.parquet", v2)
     write_csv(OUTPUTS / "candidate_population_comparison.csv", [{"metric": "v1_count", "value": len(v1)}, {"metric": "v2_count", "value": len(v2)}], ["metric", "value"])
@@ -41,6 +49,9 @@ def link_properties(cfg: PipelineConfig) -> list[dict]:
     candidates = read_parquet_placeholder(DATA_INTERIM / "candidate_population_v1.parquet")
     epc_rows = read_parquet_placeholder(DATA_INTERIM / "epc_clean.parquet")
     own_rows = read_parquet_placeholder(DATA_INTERIM / "ownership_clean.parquet")
+
+    if cfg.strict_core_inputs and not candidates:
+        raise RuntimeError("candidate_population_v1.parquet has no rows; cannot link properties.")
 
     epc_idx = {(r.get("postcode_clean", ""), clean_text(r.get("address_clean", ""))): r for r in epc_rows}
     own_idx = {(r.get("postcode_clean", ""), clean_text(r.get("address_clean", ""))): r for r in own_rows}

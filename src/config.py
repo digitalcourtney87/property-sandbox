@@ -20,6 +20,10 @@ class PipelineConfig:
     manual_review_sample_size: int = 120
     fuzzy_match_cutoff: int = 90
     random_seed: int = 42
+    strict_core_inputs: bool = True
+    ppd_download_limit: int = 8
+    ukhpi_download_limit: int = 3
+    epc_download_limit: int = 3
     source_urls: dict = field(default_factory=lambda: {
         "price_paid": "https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads",
         "land_property_api": "https://use-land-property-data.service.gov.uk/api/v1/",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from config import DATA_INTERIM, DATA_RAW, PipelineConfig
+from io_utils import clean_text, read_csv_and_zip_files, write_parquet_placeholder
 from io_utils import clean_text, read_csv_files, write_parquet_placeholder
 
 PPD_COLUMNS = [
@@ -13,6 +14,15 @@ PPD_COLUMNS = [
 
 
 def prepare_price_paid(cfg: PipelineConfig) -> list[dict]:
+    folder = DATA_RAW / "price_paid"
+    files = sorted([*folder.glob("*.csv"), *folder.glob("*.zip")])
+    if not files:
+        msg = f"Missing Price Paid raw files in {folder}. Run download_data.py or place CSV/ZIP files manually."
+        raise FileNotFoundError(msg)
+
+    rows = read_csv_and_zip_files(files, fieldnames=PPD_COLUMNS)
+    if not rows:
+        raise RuntimeError("Price Paid files found but no rows could be parsed.")
     files = sorted((DATA_RAW / "price_paid").glob("*.csv"))
     rows = read_csv_files(files, fieldnames=PPD_COLUMNS) if files else []
 
@@ -42,6 +52,9 @@ def prepare_price_paid(cfg: PipelineConfig) -> list[dict]:
             "property_key": key,
         })
         cleaned.append(out)
+
+    if not cleaned:
+        raise RuntimeError("Price Paid parsing produced zero usable rows.")
 
     dedup = {}
     for r in cleaned:

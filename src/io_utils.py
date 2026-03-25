@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import csv
+import io
+import json
+import re
+import zipfile
+from pathlib import Path
 import json
 import re
 from pathlib import Path
@@ -18,11 +23,28 @@ def read_csv_files(paths: list[Path], fieldnames: list[str] | None = None) -> li
     rows: list[dict] = []
     for path in paths:
         with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
+            reader = csv.DictReader(f, fieldnames=fieldnames) if fieldnames else csv.DictReader(f)
             if fieldnames:
                 reader = csv.DictReader(f, fieldnames=fieldnames)
             else:
                 reader = csv.DictReader(f)
             rows.extend(dict(r) for r in reader)
+    return rows
+
+
+def read_csv_and_zip_files(paths: list[Path], fieldnames: list[str] | None = None) -> list[dict]:
+    rows: list[dict] = []
+    for path in paths:
+        if path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as zf:
+                for name in zf.namelist():
+                    if name.lower().endswith(".csv"):
+                        with zf.open(name) as f:
+                            txt = io.TextIOWrapper(f, encoding="utf-8", errors="ignore", newline="")
+                            reader = csv.DictReader(txt, fieldnames=fieldnames) if fieldnames else csv.DictReader(txt)
+                            rows.extend(dict(r) for r in reader)
+        else:
+            rows.extend(read_csv_files([path], fieldnames=fieldnames))
     return rows
 
 
