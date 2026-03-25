@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from config import DATA_INTERIM, DATA_RAW, PipelineConfig
 from io_utils import clean_text, read_csv_and_zip_files, write_parquet_placeholder
+from io_utils import clean_text, read_csv_files, write_parquet_placeholder
 
 
 def map_epc_category(value: str) -> str:
@@ -28,6 +29,14 @@ def prepare_epc(cfg: PipelineConfig) -> list[dict]:
         postcode = clean_text(r.get("postcode", r.get("Postcode", ""))).replace(" ", "")
         addr = clean_text(r.get("address", r.get("Address", r.get("address1", ""))))
         tenure = r.get("tenure", r.get("transaction_type", r.get("tenancy", r.get("Tenure", ""))))
+    files = sorted((DATA_RAW / "epc_collection").glob("*.csv"))
+    rows = read_csv_files(files) if files else []
+
+    out = []
+    for r in rows:
+        postcode = clean_text(r.get("postcode", r.get("Postcode", ""))).replace(" ", "")
+        addr = clean_text(r.get("address", r.get("Address", "")))
+        tenure = r.get("tenure", r.get("transaction_type", r.get("tenancy", "")))
         out.append({
             "postcode_clean": postcode,
             "address_clean": addr,

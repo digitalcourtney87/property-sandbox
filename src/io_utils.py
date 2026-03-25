@@ -6,6 +6,10 @@ import json
 import re
 import zipfile
 from pathlib import Path
+import json
+import re
+from pathlib import Path
+from typing import Iterable
 
 
 def clean_text(value: str) -> str:
@@ -20,6 +24,10 @@ def read_csv_files(paths: list[Path], fieldnames: list[str] | None = None) -> li
     for path in paths:
         with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
             reader = csv.DictReader(f, fieldnames=fieldnames) if fieldnames else csv.DictReader(f)
+            if fieldnames:
+                reader = csv.DictReader(f, fieldnames=fieldnames)
+            else:
+                reader = csv.DictReader(f)
             rows.extend(dict(r) for r in reader)
     return rows
 
@@ -50,6 +58,7 @@ def write_csv(path: Path, rows: list[dict], fieldnames: list[str]) -> None:
 
 
 def write_parquet_placeholder(path: Path, rows: list[dict]) -> None:
+    """Write JSONL content under .parquet filename for dependency-free reproducibility."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         for row in rows:

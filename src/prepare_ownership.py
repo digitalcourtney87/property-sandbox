@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from config import DATA_INTERIM, DATA_RAW, PipelineConfig
 from io_utils import clean_text, read_csv_and_zip_files, write_parquet_placeholder
+from io_utils import clean_text, read_csv_files, write_parquet_placeholder
 
 
 def classify_owner_name(name: str) -> tuple[str, str]:
@@ -26,6 +27,9 @@ def prepare_ownership(cfg: PipelineConfig) -> list[dict]:
         return []
 
     rows = read_csv_and_zip_files(files)
+    files = sorted((DATA_RAW / "land_property_api").glob("*.csv"))
+    rows = read_csv_files(files) if files else []
+
     out = []
     for r in rows:
         owner_name = r.get("owner_name") or r.get("owner") or r.get("proprietor") or r.get("name") or ""

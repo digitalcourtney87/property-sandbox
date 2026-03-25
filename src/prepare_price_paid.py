@@ -4,6 +4,7 @@ from datetime import datetime
 
 from config import DATA_INTERIM, DATA_RAW, PipelineConfig
 from io_utils import clean_text, read_csv_and_zip_files, write_parquet_placeholder
+from io_utils import clean_text, read_csv_files, write_parquet_placeholder
 
 PPD_COLUMNS = [
     "transaction_unique_identifier", "price", "transfer_date", "postcode", "property_type",
@@ -22,6 +23,8 @@ def prepare_price_paid(cfg: PipelineConfig) -> list[dict]:
     rows = read_csv_and_zip_files(files, fieldnames=PPD_COLUMNS)
     if not rows:
         raise RuntimeError("Price Paid files found but no rows could be parsed.")
+    files = sorted((DATA_RAW / "price_paid").glob("*.csv"))
+    rows = read_csv_files(files, fieldnames=PPD_COLUMNS) if files else []
 
     cleaned = []
     for r in rows:

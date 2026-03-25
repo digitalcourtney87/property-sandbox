@@ -38,17 +38,20 @@ def write_policy_brief(metrics: list[dict], classified: list[dict]) -> None:
 - Current run is a dry-run scaffold.
 
 7. The defensible range of owner-occupation for £2m+ properties
+7. Defensible range
 - Conservative: 0.000
 - Central: 0.000
 - Upper: 0.000
 
 8. How sensitive policy design is to that range
+8. Policy sensitivity
 - Framework available; data required for substantive results.
 
 9. Key caveats
 - Missing raw core inputs.
 
 10. Recommendations for improving the evidence base
+10. Recommendations
 - Ingest PPD/EPC/ownership extracts and rerun.
 """
     else:
@@ -73,17 +76,20 @@ def write_policy_brief(metrics: list[dict], classified: list[dict]) -> None:
 - High-confidence subset reported in outputs.
 
 7. The defensible range of owner-occupation for £2m+ properties
+7. Defensible range
 - Conservative: {metric_map.get('conservative', 0):.3f}
 - Central: {metric_map.get('central', 0):.3f}
 - Upper: {metric_map.get('upper', 0):.3f}
 
 8. How sensitive policy design is to that range
+8. Policy sensitivity
 - See outputs/sensitivity_note.md.
 
 9. Key caveats
 - Coverage and linkage limitations.
 
 10. Recommendations for improving the evidence base
+10. Recommendations
 - Improve identifier-level linkage and coverage.
 """
     (OUTPUTS / "policy_brief_note.md").write_text(text, encoding="utf-8")

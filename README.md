@@ -91,10 +91,3 @@ If you only want to refresh downloads first:
 ```bash
 python src/download_data.py && python src/run_pipeline.py
 ```
-
-
-Downloader behaviour:
-- Fetches landing pages and stores them in `data/raw/<dataset>/`.
-- Parses links and downloads discovered `.csv/.zip/.xls/.xlsx/.json` files.
-- Raises a clear error for core pages when no downloadable links can be discovered.
-- Logs landing-page fetches, discovered-link outcomes, and file-download/skipped-duplicate entries in `outputs/download_log.csv`.
