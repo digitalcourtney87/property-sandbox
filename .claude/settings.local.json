@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.gov.uk)",
+      "WebFetch(domain:use-land-property-data.service.gov.uk)",
+      "WebSearch",
+      "Bash(python3:*)",
+      "WebFetch(domain:publicdata.landregistry.gov.uk)",
+      "Bash(ls -lh data/raw/price_paid/*.csv)",
+      "Bash(ls -lh data/raw/ukhpi/*.csv)"
+    ]
+  }
+}

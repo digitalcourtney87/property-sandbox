@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 import random
+import statistics
 
 from config import DATA_INTERIM, DATA_PROCESSED, OUTPUTS, PipelineConfig
 from io_utils import clean_text, read_parquet_placeholder, score_similarity, write_csv, write_parquet_placeholder
+
+
+def _build_postcode_index(rows: list[dict]) -> dict[str, list[dict]]:
+    """Group rows by postcode_clean for efficient lookup."""
+    idx: dict[str, list[dict]] = {}
+    for r in rows:
+        pc = r.get("postcode_clean", "")
+        idx.setdefault(pc, []).append(r)
+    return idx
 
 
 def build_candidate_populations(cfg: PipelineConfig) -> tuple[list[dict], list[dict]]:
@@ -15,7 +25,15 @@ def build_candidate_populations(cfg: PipelineConfig) -> tuple[list[dict], list[d
     if cfg.strict_core_inputs and not ukhpi:
         raise RuntimeError("ukhpi_uplift.parquet has no rows. Core current-value uplift cannot be built.")
 
-    max_uplift = max([float(r.get("uplift_factor", 1.15)) for r in ukhpi], default=1.15)
+    # Use median uplift as a more robust national estimate than max
+    uplift_values = [float(r.get("uplift_factor", 1.15)) for r in ukhpi if float(r.get("uplift_factor", 1.0)) > 0]
+    national_uplift = statistics.median(uplift_values) if uplift_values else 1.15
+
+    # Build per-region latest uplift for region-aware V2
+    latest_by_region: dict[str, float] = {}
+    for r in ukhpi:
+        region = r.get("region", "unknown")
+        latest_by_region[region] = float(r.get("uplift_factor", 1.15))
 
     v1, v2, proximity = [], [], []
     for r in ppd:
@@ -27,11 +45,14 @@ def build_candidate_populations(cfg: PipelineConfig) -> tuple[list[dict], list[d
         elif cfg.threshold_band_floor <= price < cfg.min_price_threshold:
             proximity.append({"property_key": r.get("property_key", ""), "latest_price": price})
 
-        est = price * max_uplift
+        # Use region-specific uplift if available, else national median
+        district = clean_text(r.get("district", "") or r.get("county", "") or "")
+        uplift = latest_by_region.get(district, national_uplift)
+        est = price * uplift
         if est >= cfg.min_price_threshold:
             rr2 = dict(r)
             rr2["candidate_version"] = "v2_uplift"
-            rr2["uplift_factor"] = max_uplift
+            rr2["uplift_factor"] = uplift
             rr2["estimated_current_value"] = est
             v2.append(rr2)
 
@@ -53,8 +74,13 @@ def link_properties(cfg: PipelineConfig) -> list[dict]:
     if cfg.strict_core_inputs and not candidates:
         raise RuntimeError("candidate_population_v1.parquet has no rows; cannot link properties.")
 
+    # Exact-match indexes
     epc_idx = {(r.get("postcode_clean", ""), clean_text(r.get("address_clean", ""))): r for r in epc_rows}
     own_idx = {(r.get("postcode_clean", ""), clean_text(r.get("address_clean", ""))): r for r in own_rows}
+
+    # Postcode indexes for fuzzy fallback
+    epc_by_postcode = _build_postcode_index(epc_rows)
+    own_by_postcode = _build_postcode_index(own_rows)
 
     linked = []
     for c in candidates:
@@ -65,18 +91,33 @@ def link_properties(cfg: PipelineConfig) -> list[dict]:
         rec["address_norm"] = addr
         rec["match_stage"] = "unmatched"
 
+        # EPC matching: exact then fuzzy
         e = epc_idx.get(key)
         if e:
             rec["epc_category"] = e.get("epc_category", "unknown")
             rec["match_stage"] = "exact_postcode_address"
         else:
-            same_pc = [x for x in epc_rows if x.get("postcode_clean", "") == pc]
-            scored = sorted([(score_similarity(addr, x.get("address_clean", "")), x) for x in same_pc], reverse=True, key=lambda z: z[0])
-            if scored and scored[0][0] >= cfg.fuzzy_match_cutoff:
-                rec["epc_category"] = scored[0][1].get("epc_category", "unknown")
-                rec["match_stage"] = "postcode_fuzzy_address"
+            same_pc = epc_by_postcode.get(pc, [])
+            if same_pc:
+                scored = sorted(
+                    [(score_similarity(addr, x.get("address_clean", "")), x) for x in same_pc],
+                    reverse=True, key=lambda z: z[0],
+                )
+                if scored and scored[0][0] >= cfg.fuzzy_match_cutoff:
+                    rec["epc_category"] = scored[0][1].get("epc_category", "unknown")
+                    rec["match_stage"] = "postcode_fuzzy_address"
 
+        # Ownership matching: exact then fuzzy
         o = own_idx.get(key)
+        if not o:
+            same_pc_own = own_by_postcode.get(pc, [])
+            if same_pc_own:
+                scored_own = sorted(
+                    [(score_similarity(addr, x.get("address_clean", "")), x) for x in same_pc_own],
+                    reverse=True, key=lambda z: z[0],
+                )
+                if scored_own and scored_own[0][0] >= cfg.fuzzy_match_cutoff:
+                    o = scored_own[0][1]
         if o:
             rec["ownership_type"] = o.get("ownership_type", "unresolved")
             rec["ownership_type_confidence"] = o.get("ownership_type_confidence", "low")

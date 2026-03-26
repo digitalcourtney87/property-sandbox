@@ -21,7 +21,7 @@ class PipelineConfig:
     fuzzy_match_cutoff: int = 90
     random_seed: int = 42
     strict_core_inputs: bool = True
-    ppd_download_limit: int = 8
+    ppd_download_limit: int = 5
     ukhpi_download_limit: int = 3
     epc_download_limit: int = 3
     source_urls: dict = field(default_factory=lambda: {

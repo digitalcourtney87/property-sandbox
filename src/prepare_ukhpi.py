@@ -15,24 +15,31 @@ def prepare_ukhpi(cfg: PipelineConfig) -> list[dict]:
     if not rows:
         raise RuntimeError("UKHPI files found but no rows could be parsed.")
 
-    out = []
-    by_region_base = {}
+    # Parse and sort by date so base HPI per region is the earliest observation
+    parsed = []
     for r in rows:
-        region = r.get("region") or r.get("Region") or r.get("area") or r.get("Area") or r.get("geography") or r.get("Geography") or "unknown"
-        date = r.get("date") or r.get("Date") or ""
-        hpi_raw = (
-            r.get("hpi") or r.get("Index") or r.get("index") or r.get("house_price_index") or r.get("House price index") or ""
-        )
+        region = (r.get("regionname") or r.get("region_name") or r.get("region name")
+                  or r.get("region") or r.get("area") or r.get("geography") or "unknown")
+        date = r.get("date") or ""
+        hpi_raw = (r.get("index") or r.get("hpi") or r.get("house_price_index")
+                   or r.get("house price index") or "")
         try:
             hpi = float(str(hpi_raw).replace(",", ""))
         except Exception:
             continue
+        parsed.append({"region": region, "date": date, "hpi": hpi})
 
+    parsed.sort(key=lambda x: x["date"])
+
+    out = []
+    by_region_base: dict[str, float] = {}
+    for p in parsed:
+        region = p["region"]
         if region not in by_region_base:
-            by_region_base[region] = hpi
+            by_region_base[region] = p["hpi"]
         base = by_region_base[region] or 1.0
-        uplift = hpi / base if base else 1.0
-        out.append({"region": region, "date": date, "hpi": hpi, "hpi_base": base, "uplift_factor": uplift})
+        uplift = p["hpi"] / base if base else 1.0
+        out.append({"region": region, "date": p["date"], "hpi": p["hpi"], "hpi_base": base, "uplift_factor": uplift})
 
     if not out:
         raise RuntimeError("UKHPI parsing produced zero usable rows.")

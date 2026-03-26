@@ -15,17 +15,27 @@ def clean_text(value: str) -> str:
     return value
 
 
+def _normalise_row(row: dict) -> dict:
+    """Lowercase all dict keys so field lookups are case-insensitive."""
+    return {k.lower().strip(): v for k, v in row.items()}
+
+
 def read_csv_files(paths: list[Path], fieldnames: list[str] | None = None) -> list[dict]:
     rows: list[dict] = []
+    normalise = fieldnames is None  # only normalise when headers come from the CSV itself
     for path in paths:
         with path.open("r", encoding="utf-8", errors="ignore", newline="") as f:
             reader = csv.DictReader(f, fieldnames=fieldnames) if fieldnames else csv.DictReader(f)
-            rows.extend(dict(r) for r in reader)
+            if normalise:
+                rows.extend(_normalise_row(r) for r in reader)
+            else:
+                rows.extend(dict(r) for r in reader)
     return rows
 
 
 def read_csv_and_zip_files(paths: list[Path], fieldnames: list[str] | None = None) -> list[dict]:
     rows: list[dict] = []
+    normalise = fieldnames is None
     for path in paths:
         if path.suffix.lower() == ".zip":
             with zipfile.ZipFile(path) as zf:
@@ -34,7 +44,10 @@ def read_csv_and_zip_files(paths: list[Path], fieldnames: list[str] | None = Non
                         with zf.open(name) as f:
                             txt = io.TextIOWrapper(f, encoding="utf-8", errors="ignore", newline="")
                             reader = csv.DictReader(txt, fieldnames=fieldnames) if fieldnames else csv.DictReader(txt)
-                            rows.extend(dict(r) for r in reader)
+                            if normalise:
+                                rows.extend(_normalise_row(r) for r in reader)
+                            else:
+                                rows.extend(dict(r) for r in reader)
         else:
             rows.extend(read_csv_files([path], fieldnames=fieldnames))
     return rows

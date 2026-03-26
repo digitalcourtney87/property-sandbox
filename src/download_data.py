@@ -41,6 +41,23 @@ def _fetch_bytes(url: str) -> tuple[bytes, str, int]:
         return resp.read(), resp.headers.get("Content-Type", ""), getattr(resp, "status", 200)
 
 
+def _stream_to_file(url: str, out_path: Path, chunk_size: int = 65536) -> tuple[str, int]:
+    """Download a URL directly to disk in chunks to avoid OOM on large files."""
+    req = Request(url, headers={"User-Agent": "property-sandbox-pipeline/1.0"})
+    with urlopen(req, timeout=300) as resp:
+        content_type = resp.headers.get("Content-Type", "")
+        status = getattr(resp, "status", 200)
+        if "text/html" in (content_type or "").lower():
+            return content_type, status
+        with open(out_path, "wb") as f:
+            while True:
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+    return content_type, status
+
+
 def _extract_links(html: str, base_url: str) -> list[str]:
     raw_links = re.findall(r'href=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
     links = []
@@ -165,11 +182,33 @@ def _fetch_and_save_landing_page(dataset: str, page_url: str, folder: Path) -> t
     return body.decode("utf-8", errors="ignore"), row
 
 
+_SKIP_PATTERNS: dict[str, tuple[str, ...]] = {
+    "price_paid": ("pp-complete",),
+}
+
+
 def _download_discovered_files(dataset: str, links: list[str], folder: Path) -> list[dict]:
     manifest = _load_manifest(folder)
     rows: list[dict] = []
+    skip_patterns = _SKIP_PATTERNS.get(dataset, ())
 
     for idx, link in enumerate(links, start=1):
+        # Skip known oversized aggregate files
+        if skip_patterns and any(p in link.lower() for p in skip_patterns):
+            rows.append({
+                "dataset": dataset,
+                "entry_type": "candidate_reject",
+                "source_url": link,
+                "download_timestamp_utc": _utc_timestamp(),
+                "status": "rejected",
+                "file_path": "",
+                "file_size_bytes": 0,
+                "http_status": "",
+                "content_type": "",
+                "note": f"Skipped oversized aggregate file (matches {skip_patterns}).",
+            })
+            continue
+
         filename = _filename_for_url(link, f"{dataset}_{idx:03d}")
         out_path = folder / filename
         row = {
@@ -201,7 +240,7 @@ def _download_discovered_files(dataset: str, links: list[str], folder: Path) -> 
             continue
 
         try:
-            body, content_type, http_status = _fetch_bytes(link)
+            content_type, http_status = _stream_to_file(link, out_path)
             if "text/html" in (content_type or "").lower():
                 row.update(
                     {
@@ -213,7 +252,6 @@ def _download_discovered_files(dataset: str, links: list[str], folder: Path) -> 
                 )
                 rows.append(row)
                 continue
-            out_path.write_bytes(body)
             manifest[link] = out_path.name
             row.update(
                 {
