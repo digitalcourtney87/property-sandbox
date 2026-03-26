@@ -49,6 +49,16 @@ Without EPC and ownership data the pipeline still runs, but:
 
 With both sources, expect meaningful discrimination across confidence tiers and a much narrower defensible range.
 
+## Memory efficiency
+
+The full EPC dataset is ~25M+ records and CCOD/OCOD is ~5M+ records. The pipeline handles this by:
+
+1. **Streaming**: files are read row-by-row from disk, never loaded entirely into memory
+2. **Postcode pre-filter**: only rows matching the ~29K candidate postcodes from Price Paid Data are kept
+3. **Result**: ~25M EPC rows are filtered down to ~50K-100K relevant rows in ~50MB of memory
+
+You can safely place the full bulk downloads in `data/raw/epc/` and `data/raw/ownership/` without worrying about memory — the pipeline filters them automatically.
+
 ## Auto-downloaded sources (no action needed)
 
 | Source | Status | Location |

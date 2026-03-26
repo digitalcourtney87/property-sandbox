@@ -128,8 +128,13 @@ def run_pipeline(cfg: PipelineConfig) -> None:
     run_downloads(cfg)
     ppd = prepare_price_paid(cfg); stage_counts["price_paid_clean"] = len(ppd)
     ukhpi = prepare_ukhpi(cfg); stage_counts["ukhpi_uplift"] = len(ukhpi)
-    epc = prepare_epc(cfg); stage_counts["epc_clean"] = len(epc)
-    own = prepare_ownership(cfg); stage_counts["ownership_clean"] = len(own)
+
+    # Build candidate postcode set for early filtering of large EPC/ownership files
+    candidate_postcodes = {r.get("postcode_clean", "") for r in ppd} - {""}
+    print(f"Candidate postcodes for EPC/ownership filter: {len(candidate_postcodes):,}")
+
+    epc = prepare_epc(cfg, candidate_postcodes=candidate_postcodes); stage_counts["epc_clean"] = len(epc)
+    own = prepare_ownership(cfg, candidate_postcodes=candidate_postcodes); stage_counts["ownership_clean"] = len(own)
     addr = prepare_addresses(cfg); stage_counts["address_reference"] = len(addr)
     ctx = prepare_contextual_sources(cfg); stage_counts["contextual_inventory"] = len(ctx)
 
