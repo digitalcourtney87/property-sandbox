@@ -7,20 +7,38 @@ from io_utils import read_parquet_placeholder, write_csv, write_parquet_placehol
 def classify_row(r: dict) -> tuple[str, str, str, bool]:
     ownership = r.get("ownership_type", "unresolved")
     epc = r.get("epc_category", "unknown")
+    prop_type = r.get("property_type", "")   # D/S/T/F/O from PPD
+    ppd_tenure = r.get("tenure_type", "")     # F=Freehold, L=Leasehold from PPD
 
-    company = ownership in {"UK_company", "overseas_company"}
+    company = ownership in {"UK_company", "overseas_company", "UK_public_body", "UK_housing_association"}
     rental = epc in {"rented_private", "rented_social"}
     owner_sig = epc == "owner_occupied"
+    sale_context = epc == "sale_context"
     conflicting = owner_sig and company
 
+    # --- High confidence ---
     if company or rental:
         return "not_owner_occupied_likely", "high", "direct_or_strong_proxy", conflicting
     if owner_sig and not conflicting:
         return "owner_occupied_likely", "high", "epc_owner_signal", conflicting
+
+    # --- Medium confidence ---
     if ownership == "individual" and not rental:
+        # Upgrade to high if we also have sale_context EPC (individual + sold = likely owner)
+        if sale_context:
+            return "owner_occupied_likely", "high", "individual_plus_sale_epc", conflicting
         return "owner_occupied_likely", "medium", "individual_no_conflict", conflicting
     if ownership == "trust_or_other":
         return "not_owner_occupied_likely", "medium", "ownership_proxy", conflicting
+
+    # --- Low confidence with PPD signal tiebreakers ---
+    # Freehold detached/semi with sale-context EPC: weak owner signal
+    if sale_context and ppd_tenure == "F" and prop_type in ("D", "S"):
+        return "owner_occupied_likely", "low", "sale_context_freehold_house", conflicting
+    # Leasehold flat with no other signal: weak investment signal
+    if ppd_tenure == "L" and prop_type == "F" and ownership == "unresolved" and epc == "unknown":
+        return "not_owner_occupied_likely", "low", "leasehold_flat_no_signal", conflicting
+
     return "uncertain", "low", "sparse_or_conflicting", conflicting
 
 
@@ -66,6 +84,26 @@ def classify_owner_occupation(cfg: PipelineConfig) -> list[dict]:
         region_rows.append({"region": region, "count": vals["count"], "owner_occupied_share_central_proxy": (vals["owner"] / vals["count"] if vals["count"] else 0)})
     write_csv(OUTPUTS / "owner_occupation_range_by_region.csv", region_rows, ["region", "count", "owner_occupied_share_central_proxy"])
 
+    return out
+
+
+def classify_v2(cfg: PipelineConfig) -> list[dict]:
+    """Classify V2 (HPI-uplifted) population."""
+    rows = read_parquet_placeholder(DATA_PROCESSED / "linked_candidate_population_v2.parquet")
+    if not rows:
+        return []
+    out = []
+    for r in rows:
+        status, tier, evidence, flag = classify_row(r)
+        rr = dict(r)
+        rr.update({
+            "owner_occupation_status": status,
+            "confidence_tier": tier,
+            "evidence_basis": evidence,
+            "conflicting_signals_flag": flag,
+        })
+        out.append(rr)
+    write_parquet_placeholder(DATA_PROCESSED / "classified_v2.parquet", out)
     return out
 
 

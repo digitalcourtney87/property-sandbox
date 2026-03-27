@@ -9,14 +9,32 @@ from config import DATA_INTERIM, DATA_RAW, PipelineConfig
 from io_utils import clean_text, write_parquet_placeholder
 
 
-def map_epc_category(value: str) -> str:
-    t = clean_text(value)
+def map_epc_category(tenure: str, transaction_type: str = "") -> str:
+    """Combine TENURE and TRANSACTION_TYPE for strongest signal."""
+    t = clean_text(tenure)
+    tx = clean_text(transaction_type)
+
+    # TRANSACTION_TYPE is a stronger signal — check first
+    if "rental" in tx and "social" in tx:
+        return "rented_social"
+    if "rental" in tx and "private" in tx:
+        return "rented_private"
+    if tx == "rental":
+        return "rented_private"  # unspecified rental defaults to private
+
+    # TENURE field
     if "owner" in t:
         return "owner_occupied"
     if "private" in t and "rent" in t:
         return "rented_private"
     if "social" in t or "council" in t or "housing association" in t:
         return "rented_social"
+    if "rent" in t:
+        return "rented_private"
+
+    # TRANSACTION_TYPE fallback for tenure=unknown cases
+    if "marketed sale" in tx or "non marketed sale" in tx:
+        return "sale_context"  # sold recently, weak owner signal
     return "unknown"
 
 
@@ -66,16 +84,33 @@ def prepare_epc(cfg: PipelineConfig, candidate_postcodes: set[str] | None = None
             continue
 
         addr = clean_text(r.get("address") or r.get("address1") or "")
-        tenure = r.get("tenure") or r.get("transaction_type") or r.get("tenancy") or ""
+        lodgement = r.get("lodgement_date") or r.get("lodgement_datetime") or ""
+        brn = r.get("building_reference_number") or ""
+        tenure = r.get("tenure") or ""
+        txn_type = r.get("transaction_type") or ""
         out.append({
             "postcode_clean": postcode,
             "address_clean": addr,
             "epc_source_field": str(tenure),
-            "epc_category": map_epc_category(str(tenure)),
+            "epc_transaction_type": str(txn_type),
+            "epc_category": map_epc_category(str(tenure), str(txn_type)),
+            "lodgement_date": str(lodgement)[:10],
+            "building_reference_number": brn,
         })
 
     filter_desc = f", kept {len(out):,} matching candidate postcodes" if candidate_postcodes else ""
     print(f"EPC: scanned {scanned:,} rows{filter_desc}.")
+
+    # Deduplicate: keep latest EPC per property (by building_reference_number or postcode+address)
+    dedup: dict[str, dict] = {}
+    for rec in out:
+        brn = rec.get("building_reference_number", "")
+        key = brn if brn else f"{rec['postcode_clean']}|{rec['address_clean']}"
+        existing = dedup.get(key)
+        if not existing or rec.get("lodgement_date", "") > existing.get("lodgement_date", ""):
+            dedup[key] = rec
+    out = list(dedup.values())
+    print(f"EPC: {len(out):,} unique properties after deduplication.")
 
     write_parquet_placeholder(DATA_INTERIM / "epc_clean.parquet", out)
     return out

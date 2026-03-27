@@ -8,8 +8,9 @@ from prepare_epc import prepare_epc
 from prepare_ownership import prepare_ownership
 from prepare_addresses import prepare_addresses
 from prepare_contextual_sources import prepare_contextual_sources
-from link_properties import build_candidate_populations, link_properties
-from classify_owner_occupation import classify_owner_occupation, build_headline_range
+from link_properties import build_candidate_populations, link_properties, link_properties_v2
+from classify_owner_occupation import classify_owner_occupation, classify_v2, build_headline_range
+from prepare_voa import prepare_voa_band_h
 from sensitivity_analysis import run_sensitivity
 from io_utils import write_csv
 
@@ -137,16 +138,24 @@ def run_pipeline(cfg: PipelineConfig) -> None:
     own = prepare_ownership(cfg, candidate_postcodes=candidate_postcodes); stage_counts["ownership_clean"] = len(own)
     addr = prepare_addresses(cfg); stage_counts["address_reference"] = len(addr)
     ctx = prepare_contextual_sources(cfg); stage_counts["contextual_inventory"] = len(ctx)
+    voa = prepare_voa_band_h(cfg); stage_counts["voa_band_h"] = voa.get("total_band_h", 0)
 
     v1, v2 = build_candidate_populations(cfg)
     stage_counts["candidate_population_v1"] = len(v1)
     stage_counts["candidate_population_v2"] = len(v2)
 
+    # V1 linking and classification
     linked = link_properties(cfg); stage_counts["linked_candidate_population"] = len(linked)
     classified = classify_owner_occupation(cfg); stage_counts["classified_owner_occupation"] = len(classified)
 
     metrics = build_headline_range(classified)
     write_csv(OUTPUTS / "headline_metrics.csv", metrics, ["estimate_type", "owner_occupation_share"])
+
+    # V2 linking and classification
+    linked_v2 = link_properties_v2(cfg); stage_counts["linked_v2"] = len(linked_v2)
+    classified_v2 = classify_v2(cfg); stage_counts["classified_v2"] = len(classified_v2)
+    metrics_v2 = build_headline_range(classified_v2)
+    write_csv(OUTPUTS / "headline_metrics_v2.csv", metrics_v2, ["estimate_type", "owner_occupation_share"])
 
     run_sensitivity(cfg)
     write_policy_brief(metrics, classified)

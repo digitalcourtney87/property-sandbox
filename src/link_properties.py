@@ -95,6 +95,7 @@ def link_properties(cfg: PipelineConfig) -> list[dict]:
         e = epc_idx.get(key)
         if e:
             rec["epc_category"] = e.get("epc_category", "unknown")
+            rec["epc_transaction_type"] = e.get("epc_transaction_type", "")
             rec["match_stage"] = "exact_postcode_address"
         else:
             same_pc = epc_by_postcode.get(pc, [])
@@ -105,6 +106,7 @@ def link_properties(cfg: PipelineConfig) -> list[dict]:
                 )
                 if scored and scored[0][0] >= cfg.fuzzy_match_cutoff:
                     rec["epc_category"] = scored[0][1].get("epc_category", "unknown")
+                    rec["epc_transaction_type"] = scored[0][1].get("epc_transaction_type", "")
                     rec["match_stage"] = "postcode_fuzzy_address"
 
         # Ownership matching: exact then fuzzy
@@ -146,7 +148,68 @@ def link_properties(cfg: PipelineConfig) -> list[dict]:
     return linked
 
 
+def link_properties_v2(cfg: PipelineConfig) -> list[dict]:
+    """Link V2 (HPI-uplifted) candidates against EPC and ownership data."""
+    candidates = read_parquet_placeholder(DATA_INTERIM / "candidate_population_v2.parquet")
+    if not candidates:
+        return []
+
+    epc_rows = read_parquet_placeholder(DATA_INTERIM / "epc_clean.parquet")
+    own_rows = read_parquet_placeholder(DATA_INTERIM / "ownership_clean.parquet")
+
+    epc_idx = {(r.get("postcode_clean", ""), clean_text(r.get("address_clean", ""))): r for r in epc_rows}
+    own_idx = {(r.get("postcode_clean", ""), clean_text(r.get("address_clean", ""))): r for r in own_rows}
+    epc_by_postcode = _build_postcode_index(epc_rows)
+    own_by_postcode = _build_postcode_index(own_rows)
+
+    linked = []
+    for c in candidates:
+        pc = c.get("postcode_clean", "")
+        addr = clean_text(c.get("address_clean", ""))
+        key = (pc, addr)
+        rec = dict(c)
+        rec["address_norm"] = addr
+        rec["match_stage"] = "unmatched"
+
+        e = epc_idx.get(key)
+        if e:
+            rec["epc_category"] = e.get("epc_category", "unknown")
+            rec["epc_transaction_type"] = e.get("epc_transaction_type", "")
+            rec["match_stage"] = "exact_postcode_address"
+        else:
+            same_pc = epc_by_postcode.get(pc, [])
+            if same_pc:
+                scored = sorted(
+                    [(score_similarity(addr, x.get("address_clean", "")), x) for x in same_pc],
+                    reverse=True, key=lambda z: z[0],
+                )
+                if scored and scored[0][0] >= cfg.fuzzy_match_cutoff:
+                    rec["epc_category"] = scored[0][1].get("epc_category", "unknown")
+                    rec["epc_transaction_type"] = scored[0][1].get("epc_transaction_type", "")
+                    rec["match_stage"] = "postcode_fuzzy_address"
+
+        o = own_idx.get(key)
+        if not o:
+            same_pc_own = own_by_postcode.get(pc, [])
+            if same_pc_own:
+                scored_own = sorted(
+                    [(score_similarity(addr, x.get("address_clean", "")), x) for x in same_pc_own],
+                    reverse=True, key=lambda z: z[0],
+                )
+                if scored_own and scored_own[0][0] >= cfg.fuzzy_match_cutoff:
+                    o = scored_own[0][1]
+        if o:
+            rec["ownership_type"] = o.get("ownership_type", "unresolved")
+            rec["ownership_type_confidence"] = o.get("ownership_type_confidence", "low")
+        linked.append(rec)
+
+    write_parquet_placeholder(DATA_PROCESSED / "linked_candidate_population_v2.parquet", linked)
+    print(f"V2 linking: {len(linked):,} candidates linked.")
+    return linked
+
+
 if __name__ == "__main__":
     cfg = PipelineConfig()
     build_candidate_populations(cfg)
     link_properties(cfg)
+    link_properties_v2(cfg)

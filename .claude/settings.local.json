@@ -14,7 +14,12 @@
       "Bash(kill 3848)",
       "Bash(xargs kill:*)",
       "Bash(xargs -I {} ps -p {} -o pid,rss,pcpu,etime --no-headers)",
-      "Bash(xargs -I {} ps -p {} -o rss,etime --no-headers)"
+      "Bash(xargs -I {} ps -p {} -o rss,etime --no-headers)",
+      "Bash(head -1 /mnt/c/Users/court/mets/property-sandbox/data/raw/ownership/*.csv)",
+      "WebFetch(domain:voaratinglists.blob.core.windows.net)",
+      "WebFetch(domain:download.companieshouse.gov.uk)",
+      "WebFetch(domain:resources.companieshouse.gov.uk)",
+      "WebFetch(domain:assets.publishing.service.gov.uk)"
     ]
   }
 }

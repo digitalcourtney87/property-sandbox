@@ -82,12 +82,25 @@ def read_parquet_placeholder(path: Path) -> list[dict]:
 
 
 def score_similarity(a: str, b: str) -> int:
-    a_set = set(clean_text(a).split())
-    b_set = set(clean_text(b).split())
-    if not a_set and not b_set:
+    """Word-level Jaccard similarity with building-number guard.
+
+    If both addresses start with a number and those numbers differ,
+    return 0 — the properties are different even if the street matches.
+    """
+    a_words = clean_text(a).split()
+    b_words = clean_text(b).split()
+    if not a_words and not b_words:
         return 100
-    if not a_set or not b_set:
+    if not a_words or not b_words:
         return 0
+
+    # Building number guard: if first token of each is numeric and they differ, no match
+    a_first, b_first = a_words[0], b_words[0]
+    if a_first.isdigit() and b_first.isdigit() and a_first != b_first:
+        return 0
+
+    a_set = set(a_words)
+    b_set = set(b_words)
     overlap = len(a_set & b_set)
     total = len(a_set | b_set)
     return int((overlap / total) * 100)

@@ -460,6 +460,39 @@ def run_downloads(cfg: PipelineConfig) -> list[dict]:
     # API handled separately
     rows.extend(_download_land_property_api(cfg))
 
+    # VOA CTSOP (council tax stock of properties by band) — direct URL download
+    voa_dir = DATA_RAW / "voa"
+    voa_dir.mkdir(parents=True, exist_ok=True)
+    voa_files = list(voa_dir.glob("*.csv")) + list(voa_dir.glob("*.zip"))
+    if not voa_files:
+        ctsop_url = cfg.source_urls.get("voa_ctsop", "")
+        if ctsop_url:
+            out_path = voa_dir / "CTSOP1-0.zip"
+            voa_row = {
+                "dataset": "voa_ctsop",
+                "entry_type": "dataset_file",
+                "source_url": ctsop_url,
+                "download_timestamp_utc": _utc_timestamp(),
+                "status": "failed",
+                "file_path": str(out_path),
+                "file_size_bytes": 0,
+                "http_status": "",
+                "content_type": "",
+                "note": "",
+            }
+            try:
+                print(f"Downloading VOA CTSOP from {ctsop_url}")
+                content_type, http_status = _stream_to_file(ctsop_url, out_path)
+                voa_row.update({
+                    "status": "ok",
+                    "file_size_bytes": out_path.stat().st_size,
+                    "http_status": http_status,
+                    "content_type": content_type,
+                })
+            except Exception as exc:
+                voa_row["note"] = str(exc)
+            rows.append(voa_row)
+
     # Contextual pages (best-effort one file each)
     contextual_names = [
         "land_property_api_info",
