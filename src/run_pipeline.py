@@ -8,7 +8,7 @@ from prepare_epc import prepare_epc
 from prepare_ownership import prepare_ownership
 from prepare_addresses import prepare_addresses
 from prepare_contextual_sources import prepare_contextual_sources
-from link_properties import build_candidate_populations, link_properties, link_properties_v2
+from link_properties import build_candidate_populations, link_all
 from classify_owner_occupation import classify_owner_occupation, classify_v2, build_headline_range
 from prepare_voa import prepare_voa_band_h
 from prepare_ctb import prepare_ctb_empty
@@ -156,18 +156,17 @@ def run_pipeline(cfg: PipelineConfig) -> None:
     stage_counts["candidate_population_v2"] = len(v2)
     del v1, v2  # written to disk; linking re-reads from disk
 
-    # V1 linking and classification
-    linked = link_properties(cfg); stage_counts["linked_candidate_population"] = len(linked)
-    del linked  # written to disk; classify re-reads from disk
-    classified = classify_owner_occupation(cfg); stage_counts["classified_owner_occupation"] = len(classified)
+    # Link V1 and V2 in a single pass (loads EPC/ownership once)
+    linked_v1, linked_v2 = link_all(cfg)
+    stage_counts["linked_candidate_population"] = len(linked_v1)
+    stage_counts["linked_v2"] = len(linked_v2)
+    del linked_v1, linked_v2  # written to disk; classify re-reads
 
+    classified = classify_owner_occupation(cfg); stage_counts["classified_owner_occupation"] = len(classified)
     metrics = build_headline_range(classified)
     write_csv(OUTPUTS / "headline_metrics.csv", metrics, ["estimate_type", "owner_occupation_share"])
-    del classified  # release before V2 linking
+    del classified
 
-    # V2 linking and classification
-    linked_v2 = link_properties_v2(cfg); stage_counts["linked_v2"] = len(linked_v2)
-    del linked_v2
     classified_v2 = classify_v2(cfg); stage_counts["classified_v2"] = len(classified_v2)
     metrics_v2 = build_headline_range(classified_v2)
     write_csv(OUTPUTS / "headline_metrics_v2.csv", metrics_v2, ["estimate_type", "owner_occupation_share"])
